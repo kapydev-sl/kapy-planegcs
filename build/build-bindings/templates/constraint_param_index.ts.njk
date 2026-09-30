@@ -1,0 +1,32 @@
+// This library provides WebAssembly bindings for the FreeCAD's geometric solver library planegcs.
+// Copyright (C) 2023  Miroslav Šerý, Salusoft89 <miroslav.sery@salusoft89.cz>  
+
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+export const constraint_param_index : Record<string, Record<string, string>> = {
+{%- for constraint in fn_constraints %}
+    {{ constraint.constraint_type }}: {
+        {%- for param in constraint.params_list -%}
+            {% if param.type == 'double' and param.identifier[0] == '*' %}
+            {{ param.identifier | replace('*', '') }}: 'object_param_or_number',
+            {%- elif param.type in ['double', 'int', 'bool'] or param.is_enum %}
+            {{ param.identifier }}: 'primitive_type',
+            {%- else %} {# object (Line, Parabola, Point, ...) #}
+            {{ param.identifier | replace('&', '') }}_id: 'object_id', 
+            {%- endif %}
+        {%- endfor %}
+    },
+{%- endfor %}
+}

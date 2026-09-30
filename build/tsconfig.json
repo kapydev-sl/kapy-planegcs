@@ -1,0 +1,31 @@
+{
+    "compilerOptions": { 
+        "esModuleInterop": true, 
+        "target": "ES2015",
+		"module": "ESNext",
+        "moduleResolution": "node", 
+        // fix for imported enums being undefined in vitest
+        "noResolve": false,
+        "allowJs": false,
+		"forceConsistentCasingInFileNames": true,
+		"resolveJsonModule": true,
+		"skipLibCheck": true,
+		"sourceMap": true,
+		"strict": true,
+		"isolatedModules": true,
+        "declaration": true,
+        "outDir": "dist"
+    },
+    "include": [
+        "build-bindings",
+        "planegcs_dist",
+        "sketch",
+        "test",
+        "index.ts"
+    ],
+    "exclude": [
+        "**/CMakeFiles",
+        "coverage",
+        "dist/**/*"
+    ],
+}

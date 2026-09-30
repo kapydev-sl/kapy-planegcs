@@ -1,0 +1,41 @@
+// This library provides WebAssembly bindings for the FreeCAD's geometric solver library planegcs.
+// Copyright (C) 2023  Miroslav Šerý, Salusoft89 <miroslav.sery@salusoft89.cz>  
+
+// This library is free software; you can redistribute it and/or
+// modify it under the terms of the GNU Lesser General Public
+// License as published by the Free Software Foundation; either
+// version 2.1 of the License, or (at your option) any later version.
+
+// This library is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+// Lesser General Public License for more details.
+
+// You should have received a copy of the GNU Lesser General Public
+// License along with this library; if not, write to the Free Software
+// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
+
+/* eslint-disable @typescript-eslint/no-unused-vars */
+import type { 
+    GcsSystem,IntVector,DoubleVector,GcsGeometry,
+    {% for cls in geom_classes -%}
+    {{ cls.name }},
+    {%- endfor %}
+} from "./gcs_system";
+import { {% for enum_name in import_enums %}{{ enum_name }}, {% endfor -%} } from "./enums";
+
+export class GcsSystemMock implements GcsSystem {
+    {%- for func in fn_ts_bindings %}
+    {{ func.fname }}({{ func.args }}): {{ func.return_type }} { 
+        {%- if func.return_type != 'void' %}
+        // @ts-expect-error: return in mock can be undefined
+        return undefined;
+        {%- else %}
+        return;
+        {%- endif %}
+    }
+    {%- endfor %}
+    delete(): void {
+        return; 
+    }
+}

@@ -1,0 +1,453 @@
+/**************************************************************************************************
+* This library provides WebAssembly bindings for the FreeCAD's geometric solver library planegcs. *
+* Copyright (C) 2023  Miroslav Šerý, Salusoft89 <miroslav.sery@salusoft89.cz>                     *
+* Copyright (C) 2023  Jiří Hon, Salusoft89 <jiri.hon@salusoft89.cz>                               *
+*                                                                                                 *
+* This library is free software; you can redistribute it and/or                                   *
+* modify it under the terms of the GNU Lesser General Public                                      *
+* License as published by the Free Software Foundation; either                                    *
+* version 2.1 of the License, or (at your option) any later version.                              *
+*                                                                                                 *
+* This library is distributed in the hope that it will be useful,                                 *
+* but WITHOUT ANY WARRANTY; without even the implied warranty of                                  *
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU                               *
+* Lesser General Public License for more details.                                                 *
+*                                                                                                 *
+* You should have received a copy of the GNU Lesser General Public                                *
+* License along with this library; if not, write to the Free Software                             *
+* Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA                    *
+**************************************************************************************************/
+
+#include <iostream>
+#include <vector>
+#include "GCS.h"
+#include <emscripten.h>  
+
+using namespace GCS;
+using namespace std;
+
+class GcsSystem : System
+{
+    public:
+        vector<double *> p_params;
+        vector<bool> is_fixed;
+
+        GcsSystem() : System() {
+            p_params = vector<double *>();
+            is_fixed = vector<bool>();
+        }
+
+        int params_size()
+        {
+            return p_params.size();
+        }
+
+        double get_p_param(int i)
+        {
+            return *p_params[i];
+        }
+
+        void set_p_param(int i, double value, bool fixed)
+        {
+            *p_params[i] = value;
+            is_fixed[i] = fixed;
+        }
+
+        int push_p_param(double value, bool fixed)
+        {
+            int index = p_params.size();
+            p_params.push_back(new double(value));
+            is_fixed.push_back(fixed);
+            return index;
+        }
+
+        bool get_is_fixed(int i)
+        {
+            return is_fixed[i];
+        }
+
+        void set_max_iterations(int n) {
+            maxIter = n;
+        }
+
+        int get_max_iterations() {
+            return maxIter;
+        }
+
+        void set_covergence_threshold(double threshold) {
+            convergence = threshold;
+        }
+
+        double get_convergence_threshold() {
+            return convergence;
+        }
+
+        // an integer is used here because Enum didn't work properly
+        int solve_system(int algorithm)
+        {
+            Algorithm alg = static_cast<Algorithm>(algorithm);
+            vector<double *> solved_p_params;
+            for (int i = 0; i < p_params.size(); ++i)
+            {
+                if (!is_fixed[i])
+                {
+                    solved_p_params.push_back(p_params[i]);
+                }
+            }
+
+            if (this->debugMode == IterationLevel) {
+                if (alg == DogLeg) {
+                    EM_ASM({ console.log("Solving with DogLeg\n"); });
+                } else if (alg == LevenbergMarquardt) {
+                    EM_ASM({ console.log("Solving with LevenbergMarquardt\n"); });
+                } else if (alg == BFGS) {
+                    EM_ASM({ console.log("Solving with BFGS\n"); });
+                }
+            }
+            // the second parameter doesn't influence anything
+            return solve(solved_p_params, true, alg);
+        }
+
+        vector<double> get_p_params()
+        {
+            vector<double> p;
+            for (int i = 0; i < p_params.size(); ++i)
+            {
+                p.push_back(*p_params[i]);
+            }
+            return p;
+        }
+
+        void clear_data()
+        {
+            for (int i = 0; i < p_params.size(); ++i)
+            {
+                delete p_params[i];
+            }
+            p_params.clear();
+            is_fixed.clear();
+            clear();
+        }
+
+        void apply_solution()
+        {
+            applySolution();
+        }
+
+        int dof()
+        {
+            return dofsNumber();
+        }
+
+        bool has_conflicting()
+        {
+            return hasConflicting();
+        }
+
+        bool has_redundant()
+        {
+            return hasRedundant();
+        }
+
+        bool has_partially_redundant()
+        {
+            return hasPartiallyRedundant();
+        }
+
+        vector<int> get_conflicting()
+        {
+            vector<int> conflicting;
+            getConflicting(conflicting);
+            return conflicting;
+        }
+
+        vector<int> get_redundant()
+        {
+            vector<int> redundant;
+            getRedundant(redundant);
+            return redundant;
+        }
+
+        vector<int> get_partially_redundant()
+        {
+            vector<int> partially_redundant;
+            getPartiallyRedundant(partially_redundant);
+            return partially_redundant;
+        }
+
+        // Indices (into p_params) of the parameters the solver determined
+        // to be dependent (constrained). A geometry is fully constrained
+        // iff every one of its non-fixed params is in this set — this is
+        // how FreeCAD's Sketcher decides a sketch element is fully solved.
+        vector<int> get_dependent_params()
+        {
+            VEC_pD dependent;
+            getDependentParams(dependent);
+            vector<int> out;
+            for (size_t k = 0; k < dependent.size(); ++k)
+            {
+                for (size_t i = 0; i < p_params.size(); ++i)
+                {
+                    if (p_params[i] == dependent[k])
+                    {
+                        out.push_back((int)i);
+                        break;
+                    }
+                }
+            }
+            return out;
+        }
+
+        void clear_by_id(int id)
+        {
+            clearByTag(id);
+        }
+
+        void set_debug_mode(int debug_mode)
+        {
+            DebugMode debug_mode_enum = static_cast<DebugMode>(debug_mode);
+            this->debugMode = debug_mode_enum;
+        }
+
+        int get_debug_mode()
+        {
+            return this->debugMode;
+        }
+
+        /* make objects from params */
+        Point make_point(int px_i, int py_i)
+        {
+            Point p;
+            p.x = p_param_or_fail(px_i);
+            p.y = p_param_or_fail(py_i);
+            return p;
+        }
+
+        Line make_line(int p1x_i, int p1y_i, int p2x_i, int p2y_i)
+        {
+            Point p1 = make_point(p1x_i, p1y_i);
+            Point p2 = make_point(p2x_i, p2y_i);
+
+            Line l;
+            l.p1 = p1;
+            l.p2 = p2;
+
+            return l;
+        }
+
+        Circle make_circle(int cx_i, int cy_i, int rad_i)
+        {
+            Point cp = make_point(cx_i, cy_i);
+
+            Circle c;
+            c.center = cp;
+            c.rad = p_param_or_fail(rad_i);
+
+            return c;
+        }
+
+        Ellipse make_ellipse(
+            int cx_i, int cy_i, int focus1x_i, int focus1y_i, int radmin_i
+        )
+        {
+            Ellipse e;
+            e.center = make_point(cx_i, cy_i);
+            e.focus1 = make_point(focus1x_i, focus1y_i);
+            e.radmin = p_param_or_fail(radmin_i);
+
+            return e;
+        }
+
+        Hyperbola make_hyperbola(
+            int cx_i, int cy_i, int focus1x_i, int focus1y_i, int radmin_i
+        )
+        {
+            Hyperbola h;
+            h.center = make_point(cx_i, cy_i);
+            h.focus1 = make_point(focus1x_i, focus1y_i);
+            h.radmin = p_param_or_fail(radmin_i);
+
+            return h;
+        }
+
+        Parabola make_parabola(
+            int vertexx_i, int vertexy_i, int focus1x_i, int focus1y_i
+        ) 
+        {
+            Parabola p;
+            p.focus1 = make_point(focus1x_i, focus1y_i);
+            p.vertex = make_point(vertexx_i, vertexy_i);
+
+            return p;
+        }
+
+        Arc make_arc(
+            int cx_i, int cy_i, int startx_i, int starty_i, int endx_i, int endy_i,
+            int startangle_i, int endangle_i, int rad_i)
+        {
+            Point c = make_point(cx_i, cy_i);
+            Point start = make_point(startx_i, starty_i);
+            Point end = make_point(endx_i, endy_i);
+
+            Arc a;
+            a.center = c;
+            a.start = start;
+            a.startAngle = p_param_or_fail(startangle_i);
+            a.endAngle = p_param_or_fail(endangle_i);
+            a.end = end;
+            a.rad = p_param_or_fail(rad_i);
+
+            return a;
+        }
+
+        ArcOfEllipse make_arc_of_ellipse(
+            int cx_i, int cy_i, int focus1x_i, int focus1y_i,
+            int startx_i, int starty_i, int endx_i, int endy_i,
+            int startangle_i, int endangle_i, int radmin_i
+        )
+        {
+            ArcOfEllipse a;
+            a.center = make_point(cx_i, cy_i);
+            a.start = make_point(startx_i, starty_i);
+            a.startAngle = p_param_or_fail(startangle_i);
+            a.end = make_point(endx_i, endy_i); 
+            a.endAngle = p_param_or_fail(endangle_i);
+            a.radmin = p_param_or_fail(radmin_i);
+            a.focus1 = make_point(focus1x_i, focus1y_i);
+
+            return a;   
+        }
+
+        ArcOfParabola make_arc_of_parabola(
+            int vertexx_i, int vertexy_i, int focusx_i, int focusy_i, int startx_i, int starty_i, int endx_i, int endy_i,
+            int startangle_i, int endangle_i 
+        )
+        {
+            ArcOfParabola a;
+            a.start = make_point(startx_i, starty_i);
+            a.startAngle = p_param_or_fail(startangle_i);
+            a.end = make_point(endx_i, endy_i);
+            a.endAngle = p_param_or_fail(endangle_i);
+            a.focus1 = make_point(focusx_i, focusy_i);
+            a.vertex = make_point(vertexx_i, vertexy_i);
+
+            return a;
+        }
+
+        ArcOfHyperbola make_arc_of_hyperbola(
+            int cx_i, int cy_i, int focus1x_i, int focus1y_i, int startx_i, int starty_i, int endx_i, int endy_i,
+            int startangle_i, int endangle_i, int radmin_i
+        )
+        {
+            ArcOfHyperbola a;
+            a.center = make_point(cx_i, cy_i);
+            a.start = make_point(startx_i, starty_i);
+            a.startAngle = p_param_or_fail(startangle_i);
+            a.end = make_point(endx_i, endy_i); 
+            a.endAngle = p_param_or_fail(endangle_i);
+            a.radmin = p_param_or_fail(radmin_i);
+            a.focus1 = make_point(focus1x_i, focus1y_i);
+
+            return a;   
+        }
+        
+        BSpline make_bspline(
+            int startx_i, int starty_i, int endx_i, int endy_i, vector<int> poles_xy_i,
+            vector<int> weights_i, vector<int> knots_i, vector<int> mult, int degree, bool periodic
+        )
+        {
+            BSpline bs;
+            bs.start = make_point(startx_i, starty_i);
+            bs.end = make_point(endx_i, endy_i);
+            bs.degree = degree;
+            bs.periodic = periodic;
+            bs.mult = mult;
+
+            for (int i = 0; i < poles_xy_i.size(); i += 2) {
+                Point p = make_point(poles_xy_i[i], poles_xy_i[i + 1]);
+                bs.poles.push_back(p);
+            }
+
+            for (int i = 0; i < weights_i.size(); i++) {
+                bs.weights.push_back(p_param_or_fail(weights_i[i]));
+            }
+
+            for (int i = 0; i < knots_i.size(); i++) {
+                bs.knots.push_back(p_param_or_fail(knots_i[i]));
+            }
+            
+            return bs;
+        }{% include "templates/add_constraint_functions.cpp.njk" %}
+
+    private:
+        double* p_param_or_fail(int i) {
+            if (p_params.size() <= i) {
+                throw std::runtime_error("parameter index outside range");
+            }
+            return p_params[i];
+        }
+};
+
+#include <emscripten/bind.h>  
+
+EMSCRIPTEN_BINDINGS(module) {
+    emscripten::register_vector<double>("DoubleVector");
+    emscripten::register_vector<int>("IntVector");
+
+{%- for enum in enums %}
+    emscripten::enum_<{{ enum.name }}>("{{ enum.name }}")
+    {%- for value in enum.values -%}
+        {%- if enum.is_enum_class %}
+        .value("{{ value.name }}", {{ enum.name }}::{{ value.name }})
+        {%- else %}
+        .value("{{ value.name }}", {{ value.name }})
+        {%- endif -%}
+    {% endfor %};
+{% endfor -%}
+    {# Geo.h Geometry classes (Point, Line, ...) #}
+    {%- for cls in geom_classes -%}
+    {% if cls.base %}
+    emscripten::class_<{{ cls.name }}, emscripten::base<{{ cls.base }}>>("{{ cls.name }}");
+    {%- else %}
+    emscripten::class_<{{ cls.name }}>("{{ cls.name }}");
+    {%- endif %}
+    {%- endfor %}
+
+    emscripten::class_<GcsSystem>("GcsSystem")
+        .constructor<>()
+        .function("params_size", &GcsSystem::params_size)
+        .function("get_p_param", &GcsSystem::get_p_param)
+        .function("get_p_params", &GcsSystem::get_p_params)
+        .function("set_p_param", &GcsSystem::set_p_param)
+        .function("push_p_param", &GcsSystem::push_p_param)
+        .function("get_is_fixed", &GcsSystem::get_is_fixed)
+        .function("solve_system", &GcsSystem::solve_system)
+        .function("clear_data", &GcsSystem::clear_data)
+        /* functions adapted from GCS::System */
+        .function("apply_solution", &GcsSystem::apply_solution)
+        .function("dof", &GcsSystem::dof)
+        .function("get_conflicting", &GcsSystem::get_conflicting)
+        .function("get_redundant", &GcsSystem::get_redundant)
+        .function("get_partially_redundant", &GcsSystem::get_partially_redundant)
+        .function("get_dependent_params", &GcsSystem::get_dependent_params)
+        .function("has_conflicting", &GcsSystem::has_conflicting)
+        .function("has_redundant", &GcsSystem::has_redundant)
+        .function("has_partially_redundant", &GcsSystem::has_partially_redundant)
+        .function("clear_by_id", &GcsSystem::clear_by_id)
+        .function("set_max_iterations", &GcsSystem::set_max_iterations)
+        .function("get_max_iterations", &GcsSystem::get_max_iterations)
+        .function("set_covergence_threshold", &GcsSystem::set_covergence_threshold)
+        .function("get_convergence_threshold", &GcsSystem::get_convergence_threshold)
+        .function("set_debug_mode", &GcsSystem::set_debug_mode)
+        .function("get_debug_mode", &GcsSystem::get_debug_mode)
+        /* make_<geometry> functions */
+        {%- for cls in geom_classes -%}
+        {% if not cls.skip_make %}
+        .function("{{ cls.make_fname }}", &GcsSystem::{{cls.make_fname}})
+        {%- endif %}
+        {%- endfor %}
+        /* constraint functions */
+        {%- for constraint in fn_constraints %}
+        .function("{{constraint.fname_lower}}", &GcsSystem::{{constraint.fname_lower}}){% endfor %}
+        ;
+}

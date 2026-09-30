@@ -1,0 +1,83 @@
+// services/planegcs/build/capi/constraint_kinds.def
+//
+// The constraints `gcs_constraint` can add: one row per kind, and the single
+// source of truth for three readers. gcs_capi.h turns it into the enum and the
+// slot table the C++ validates against; gcs_capi_constraints.cpp has one
+// `case` per row; the Node shim (tests/unit/helpers/solverOracle/capiShim.ts)
+// parses it to map the embind method names onto `gcs_constraint`.
+//
+// A row is  GCS_KIND(id, name, sig, g0, g1, g2, params):
+//   id      the number a caller passes as `kind`; never renumbered, never reused
+//   name    the embind method without its `add_constraint_` prefix
+//   sig     the arguments in the order embind takes them: g = geometry handle,
+//           p = parameter index, f = flag (a bool or an enum, as an i32),
+//           T = tag, D = driving, S = scale. `g`s fill g0..g2 in order, `p`s
+//           fill p0, p1 (a third `p`, `difference`'s, fills `flag`), `f`s fill
+//           `flag` (two of them, `reverse1` and `reverse2`, are bits 0 and 1)
+//   g0..g2  the geometry each slot must hold: NO none, PT point, LN line,
+//           CI circle, AR arc, EL ellipse, CV any curve
+//   params  how many parameter indices the row consumes as p0/p1
+//
+// What does NOT belong here: the bodies of the constraints (the .cpp) or
+// anything about geometry construction (`gcs_geom`). Constraints that need
+// four geometries, a double, or a B-spline are not in the table yet; a caller
+// that asks for one gets ERR_BAD_KIND, never a guess.
+
+GCS_KIND(1, equal, "ppTDfS", NO, NO, NO, 2)
+GCS_KIND(2, difference, "pppTDS", NO, NO, NO, 2)
+GCS_KIND(3, p2p_distance, "ggpTDS", PT, PT, NO, 1)
+GCS_KIND(4, p2p_angle, "ggpTDS", PT, PT, NO, 1)
+GCS_KIND(5, p2l_distance, "ggpTDS", PT, LN, NO, 1)
+GCS_KIND(6, point_on_line_pl, "ggTDS", PT, LN, NO, 0)
+GCS_KIND(7, point_on_line_ppp, "gggTDS", PT, PT, PT, 0)
+GCS_KIND(8, point_on_perp_bisector_pl, "ggTDS", PT, LN, NO, 0)
+GCS_KIND(9, point_on_perp_bisector_ppp, "gggTDS", PT, PT, PT, 0)
+GCS_KIND(10, parallel, "ggTDS", LN, LN, NO, 0)
+GCS_KIND(11, perpendicular_ll, "ggTDS", LN, LN, NO, 0)
+GCS_KIND(12, l2l_angle_ll, "ggpTDS", LN, LN, NO, 1)
+GCS_KIND(13, angle_via_point, "gggpTDS", CV, CV, PT, 1)
+GCS_KIND(14, midpoint_on_line_ll, "ggTDS", LN, LN, NO, 0)
+GCS_KIND(15, tangent_circumf, "ggppfTDS", PT, PT, NO, 2)
+GCS_KIND(16, p2p_coincident, "ggTDS", PT, PT, NO, 0)
+GCS_KIND(17, horizontal_l, "gTDS", LN, NO, NO, 0)
+GCS_KIND(18, horizontal_pp, "ggTDS", PT, PT, NO, 0)
+GCS_KIND(19, vertical_l, "gTDS", LN, NO, NO, 0)
+GCS_KIND(20, vertical_pp, "ggTDS", PT, PT, NO, 0)
+GCS_KIND(21, coordinate_x, "gpTDS", PT, NO, NO, 1)
+GCS_KIND(22, coordinate_y, "gpTDS", PT, NO, NO, 1)
+GCS_KIND(23, arc_rules, "gTDS", AR, NO, NO, 0)
+GCS_KIND(24, point_on_circle, "ggTDS", PT, CI, NO, 0)
+GCS_KIND(25, point_on_ellipse, "ggTDS", PT, EL, NO, 0)
+GCS_KIND(26, point_on_arc, "ggTDS", PT, AR, NO, 0)
+GCS_KIND(27, curve_value, "ggpTDS", PT, CV, NO, 1)
+GCS_KIND(28, perpendicular_line2arc, "gggTDS", PT, PT, AR, 0)
+GCS_KIND(29, perpendicular_arc2line, "gggTDS", AR, PT, PT, 0)
+GCS_KIND(30, perpendicular_circle2arc, "gpgTDS", PT, AR, NO, 1)
+GCS_KIND(31, perpendicular_arc2circle, "ggpTDS", AR, PT, NO, 1)
+GCS_KIND(32, perpendicular_arc2arc, "gfgfTDS", AR, AR, NO, 0)
+GCS_KIND(33, tangent_lc, "ggTDS", LN, CI, NO, 0)
+GCS_KIND(34, tangent_le, "ggTDS", LN, EL, NO, 0)
+GCS_KIND(35, tangent_la, "ggTDS", LN, AR, NO, 0)
+GCS_KIND(36, tangent_cc, "ggTDS", CI, CI, NO, 0)
+GCS_KIND(37, tangent_aa, "ggTDS", AR, AR, NO, 0)
+GCS_KIND(38, tangent_ca, "ggTDS", CI, AR, NO, 0)
+GCS_KIND(39, circle_radius, "gpTDS", CI, NO, NO, 1)
+GCS_KIND(40, arc_radius, "gpTDS", AR, NO, NO, 1)
+GCS_KIND(41, circle_diameter, "gpTDS", CI, NO, NO, 1)
+GCS_KIND(42, arc_diameter, "gpTDS", AR, NO, NO, 1)
+GCS_KIND(43, equal_length, "ggTDS", LN, LN, NO, 0)
+GCS_KIND(44, equal_radius_cc, "ggTDS", CI, CI, NO, 0)
+GCS_KIND(45, equal_radius_ca, "ggTDS", CI, AR, NO, 0)
+GCS_KIND(46, equal_radius_aa, "ggTDS", AR, AR, NO, 0)
+GCS_KIND(47, equal_radii_ee, "ggTDS", EL, EL, NO, 0)
+GCS_KIND(48, p2p_symmetric_ppl, "gggTDS", PT, PT, LN, 0)
+GCS_KIND(49, p2p_symmetric_ppp, "gggTDS", PT, PT, PT, 0)
+GCS_KIND(50, c2cdistance, "ggpTDS", CI, CI, NO, 1)
+GCS_KIND(51, c2ldistance, "ggpTDS", CI, LN, NO, 1)
+GCS_KIND(52, p2cdistance, "ggpTDS", PT, CI, NO, 1)
+GCS_KIND(53, arc_length, "gpTDS", AR, NO, NO, 1)
+GCS_KIND(54, internal_alignment_point2ellipse, "ggfTDS", EL, PT, NO, 0)
+GCS_KIND(55, internal_alignment_ellipse_major_diameter, "gggTDS", EL, PT, PT, 0)
+GCS_KIND(56, internal_alignment_ellipse_minor_diameter, "gggTDS", EL, PT, PT, 0)
+GCS_KIND(57, internal_alignment_ellipse_focus1, "ggTDS", EL, PT, NO, 0)
+GCS_KIND(58, internal_alignment_ellipse_focus2, "ggTDS", EL, PT, NO, 0)
